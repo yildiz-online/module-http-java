@@ -6,12 +6,12 @@ import be.yildizgames.module.http.HttpClientBuilder;
 public class JavaHttpClientBuilder implements HttpClientBuilder {
 
     @Override
-    public final HttpClient getHttpClient() {
+    public final HttpClient buildHttpClient() {
         return new JavaHttpClient();
     }
 
     @Override
-    public final HttpClient getHttpClient(int timeout) {
+    public final HttpClient buildHttpClient(int timeout) {
         return new JavaHttpClient(timeout);
     }
 }
