@@ -115,6 +115,28 @@ public class JavaHttpClient implements HttpClient {
         }
     }
 
+    @Override
+    public HttpResponse<String> sendFileResponse(URI to, Path file, String mime) {
+        try {
+            var request = java.net.http.HttpRequest.newBuilder()
+                    .header("Content-Type", mime)
+                    .uri(to)
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofFile(file))
+                    .build();
+            var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            var headers = new ArrayList<Header>();
+            for(var h:  response.headers().map().entrySet()) {
+                headers.add(new Header(h.getKey(), h.getValue()));
+            }
+            return new HttpResponse<>(response.statusCode(), response.body(), new Headers(headers));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("error.http.file.send", e);
+        } catch (Exception e) {
+            throw new IllegalStateException("error.http.file.send", e);
+        }
+    }
+
     public final void receiveFile(URI uri, Path destination) {
         try {
             Files.createDirectories(destination.getParent());
