@@ -49,22 +49,27 @@ public class JavaHttpClient implements HttpClient {
         this(-1);
     }
 
+    @Override
     public final String getText(final URI uri) {
         return this.getStream(uri, java.net.http.HttpResponse.BodyHandlers.ofString());
     }
 
+    @Override
     public final String getText(final String uri) {
         return this.getText(URI.create(uri));
     }
 
+    @Override
     public final HttpResponse<String> getTextResponse(final URI uri) {
         return this.getStreamResponse(uri, java.net.http.HttpResponse.BodyHandlers.ofString());
     }
 
+    @Override
     public final HttpResponse<String> getTextResponse(final String uri) {
         return this.getTextResponse(URI.create(uri));
     }
 
+    @Override
     public final <T> T getObject(URI uri, Class<T> clazz) {
         try {
             var content = this.getText(uri);
@@ -75,26 +80,32 @@ public class JavaHttpClient implements HttpClient {
         }
     }
 
+    @Override
     public final <T> T getObject(String uri, Class<T> clazz) {
         return this.getObject(URI.create(uri), clazz);
     }
 
+    @Override
     public final InputStream getInputStream(final URI uri) {
         return this.getStream(uri, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
     }
 
+    @Override
     public final InputStream getInputStream(final String uri) {
         return this.getInputStream(URI.create(uri));
     }
 
+    @Override
     public final Reader getReader(final URI uri) {
         return new InputStreamReader(this.getStream(uri, java.net.http.HttpResponse.BodyHandlers.ofInputStream()));
     }
 
+    @Override
     public final Reader getReader(final String uri) {
         return this.getReader(URI.create(uri));
     }
 
+    @Override
     public final void sendFile(URI uri, Path origin, String mime) {
         try {
             var request = java.net.http.HttpRequest.newBuilder()
@@ -116,7 +127,7 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
-    public HttpResponse<String> sendFileResponse(URI to, Path file, String mime) {
+    public final HttpResponse<String> sendFileResponse(URI to, Path file, String mime) {
         try {
             var request = java.net.http.HttpRequest.newBuilder()
                     .header("Content-Type", mime)
@@ -137,6 +148,7 @@ public class JavaHttpClient implements HttpClient {
         }
     }
 
+    @Override
     public final void receiveFile(URI uri, Path destination) {
         try {
             Files.createDirectories(destination.getParent());
@@ -161,6 +173,7 @@ public class JavaHttpClient implements HttpClient {
         }
     }
 
+    @Override
     public final void addTransferListener(HttpTransferListener l) {
         this.listeners.add(l);
     }
