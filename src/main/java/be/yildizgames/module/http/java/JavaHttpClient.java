@@ -70,6 +70,31 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
+    public <T, R> HttpResponse<R> postObject(String uri, T objectToPost, Class<R> responseClazz) {
+        try {
+            var mapper = new ObjectMapper();
+            var content = mapper.writeValueAsString(objectToPost);
+            var request = java.net.http.HttpRequest.newBuilder()
+                    .header("Content-Type", "application/json")
+                    .uri(URI.create(uri))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(content))
+                    .build();
+            var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            var body = mapper.readValue(response.body(), responseClazz);
+            var headers = new ArrayList<Header>();
+            for(var h: response.headers().map().entrySet()) {
+                headers.add(new Header(h.getKey(), h.getValue()));
+            }
+            return new HttpResponse<>(response.statusCode(), body, new Headers(headers));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("error.http.file.send", e);
+        } catch (Exception e) {
+            throw new IllegalStateException("error.http.file.send", e);
+        }
+    }
+
+    @Override
     public final <T> T getObject(URI uri, Class<T> clazz) {
         try {
             var content = this.getText(uri);
