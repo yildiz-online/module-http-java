@@ -88,9 +88,9 @@ public class JavaHttpClient implements HttpClient {
             return new HttpResponse<>(response.statusCode(), body, new Headers(headers));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("error.http.file.send", e);
+            return new HttpResponse<>(e);
         } catch (Exception e) {
-            throw new IllegalStateException("error.http.file.send", e);
+            return new HttpResponse<>(e);
         }
     }
 
@@ -167,9 +167,9 @@ public class JavaHttpClient implements HttpClient {
             return new HttpResponse<>(response.statusCode(), response.body(), new Headers(headers));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("error.http.file.send", e);
+            return new HttpResponse<>(e);
         } catch (Exception e) {
-            throw new IllegalStateException("error.http.file.send", e);
+            return new HttpResponse<>(e);
         }
     }
 
