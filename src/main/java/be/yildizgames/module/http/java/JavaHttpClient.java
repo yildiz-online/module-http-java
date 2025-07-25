@@ -80,12 +80,17 @@ public class JavaHttpClient implements HttpClient {
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofString(content))
                     .build();
             var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            var body = mapper.readValue(response.body(), responseClazz);
             var headers = new ArrayList<Header>();
             for(var h: response.headers().map().entrySet()) {
                 headers.add(new Header(h.getKey(), h.getValue()));
             }
-            return new HttpResponse<>(response.statusCode(), body, new Headers(headers));
+            if(response.statusCode() == 204) {
+                return new HttpResponse<>(response.statusCode(), null, new Headers(headers));
+            }
+            if(response.statusCode() == 200 || response.statusCode() == 201) {
+                return new HttpResponse<>(response.statusCode(), mapper.readValue(response.body(), responseClazz), new Headers(headers));
+            }
+            return new HttpResponse<>(response.statusCode(), null,  new Headers(headers));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new HttpResponse<>(e);
