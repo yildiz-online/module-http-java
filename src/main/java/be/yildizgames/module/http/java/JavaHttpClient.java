@@ -2,8 +2,8 @@ package be.yildizgames.module.http.java;
 
 import be.yildizgames.module.http.Header;
 import be.yildizgames.module.http.Headers;
-import be.yildizgames.module.http.HttpCode;
 import be.yildizgames.module.http.HttpClient;
+import be.yildizgames.module.http.HttpCode;
 import be.yildizgames.module.http.HttpResponse;
 import be.yildizgames.module.http.HttpTransferListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -163,6 +163,28 @@ public class JavaHttpClient implements HttpClient {
                     .header("Content-Type", mime)
                     .uri(to)
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofFile(file))
+                    .build();
+            var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            var headers = new ArrayList<Header>();
+            for(var h:  response.headers().map().entrySet()) {
+                headers.add(new Header(h.getKey(), h.getValue()));
+            }
+            return new HttpResponse<>(response.statusCode(), response.body(), new Headers(headers));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new HttpResponse<>(e);
+        } catch (Exception e) {
+            return new HttpResponse<>(e);
+        }
+    }
+
+    @Override
+    public final HttpResponse<String> sendBinaryResponse(URI to, byte[] content, String mime) {
+        try {
+            var request = java.net.http.HttpRequest.newBuilder()
+                    .header("Content-Type", mime)
+                    .uri(to)
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(content))
                     .build();
             var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             var headers = new ArrayList<Header>();
