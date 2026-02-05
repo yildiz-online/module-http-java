@@ -165,11 +165,7 @@ public class JavaHttpClient implements HttpClient {
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofFile(file))
                     .build();
             var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            var headers = new ArrayList<Header>();
-            for(var h:  response.headers().map().entrySet()) {
-                headers.add(new Header(h.getKey(), h.getValue()));
-            }
-            return new HttpResponse<>(response.statusCode(), response.body(), new Headers(headers));
+            return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new HttpResponse<>(e);
@@ -187,11 +183,7 @@ public class JavaHttpClient implements HttpClient {
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(content))
                     .build();
             var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            var headers = new ArrayList<Header>();
-            for(var h:  response.headers().map().entrySet()) {
-                headers.add(new Header(h.getKey(), h.getValue()));
-            }
-            return new HttpResponse<>(response.statusCode(), response.body(), new Headers(headers));
+            return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new HttpResponse<>(e);
@@ -270,11 +262,7 @@ public class JavaHttpClient implements HttpClient {
         }
         try {
             var response = this.client.send(request, bodyHandler);
-            var headers = new ArrayList<Header>();
-            for(var h:  response.headers().map().entrySet()) {
-                headers.add(new Header(h.getKey(), h.getValue()));
-            }
-            return new HttpResponse<>(response.statusCode(), response.body(), new Headers(headers));
+            return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
         } catch (Throwable e) {
             return new HttpResponse<>(e);
         }
