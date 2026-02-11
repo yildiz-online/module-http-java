@@ -1,32 +1,22 @@
 package be.yildizgames.module.http.java;
 
-import be.yildizgames.module.http.Header;
 import be.yildizgames.module.http.Headers;
 import be.yildizgames.module.http.HttpClient;
 import be.yildizgames.module.http.HttpCode;
 import be.yildizgames.module.http.HttpResponse;
 import be.yildizgames.module.http.HttpTransferListener;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.function.Supplier;
 
 public class JavaHttpClient implements HttpClient {
-
-    /**
-     * Logger.
-     */
-    private static final System.Logger LOGGER = System.getLogger(JavaHttpClient.class.toString());
 
     public static final String ERROR_HTTP_CONTENT_RETRIEVE = "error.http.content.retrieve";
 
@@ -34,8 +24,6 @@ public class JavaHttpClient implements HttpClient {
      * Buffer size.
      */
     private static final int BUFFER_SIZE = 1024;
-
-    private final List<HttpTransferListener> listeners = new ArrayList<>();
 
     private final java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
 
@@ -50,47 +38,20 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
-    public final String getText(final URI uri) {
-        return this.getStream(uri, java.net.http.HttpResponse.BodyHandlers.ofString());
+    public final HttpResponse<String> getText(final String uri) {
+        return this.getStreamResponse(URI.create(uri), java.net.http.HttpResponse.BodyHandlers.ofString());
     }
 
     @Override
-    public final String getText(final String uri) {
-        return this.getText(URI.create(uri));
-    }
-
-    @Override
-    public final HttpResponse<String> getTextResponse(final URI uri) {
-        return this.getStreamResponse(uri, java.net.http.HttpResponse.BodyHandlers.ofString());
-    }
-
-    @Override
-    public final HttpResponse<String> getTextResponse(final String uri) {
-        return this.getTextResponse(URI.create(uri));
-    }
-
-    @Override
-    public <T, R> HttpResponse<R> postObject(String uri, T objectToPost, Class<R> responseClazz) {
+    public final HttpResponse<String> postText(final String uri, final String content, final String mime) {
         try {
-            var mapper = new ObjectMapper();
-            var content = mapper.writeValueAsString(objectToPost);
             var request = java.net.http.HttpRequest.newBuilder()
-                    .header("Content-Type", "application/json")
+                    .header("Content-Type", mime)
                     .uri(URI.create(uri))
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofString(content))
                     .build();
             var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            var headers = new ArrayList<Header>();
-            for(var h: response.headers().map().entrySet()) {
-                headers.add(new Header(h.getKey(), h.getValue()));
-            }
-            if(response.statusCode() == 204) {
-                return new HttpResponse<>(response.statusCode(), null, new Headers(headers));
-            }
-            if(response.statusCode() == 200 || response.statusCode() == 201) {
-                return new HttpResponse<>(response.statusCode(), mapper.readValue(response.body(), responseClazz), new Headers(headers));
-            }
-            return new HttpResponse<>(response.statusCode(), null,  new Headers(headers));
+            return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new HttpResponse<>(e);
@@ -100,68 +61,41 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
-    public final <T> T getObject(URI uri, Class<T> clazz) {
+    public final HttpResponse<InputStream> getInputStream(final String uri) {
+        return this.getStreamResponse(URI.create(uri), java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+    }
+
+    @Override
+    public final HttpResponse<Path> getFile(final String uri, final Path destination, final HttpTransferListener listener) {
         try {
-            var content = this.getText(uri);
-            var mapper = new ObjectMapper();
-            return mapper.readValue(content,clazz);
+            Files.createDirectories(destination.getParent());
         } catch (IOException e) {
-            throw new IllegalStateException(e);
+            return new HttpResponse<>(e);
         }
-    }
-
-    @Override
-    public final <T> T getObject(String uri, Class<T> clazz) {
-        return this.getObject(URI.create(uri), clazz);
-    }
-
-    @Override
-    public final InputStream getInputStream(final URI uri) {
-        return this.getStream(uri, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
-    }
-
-    @Override
-    public final InputStream getInputStream(final String uri) {
-        return this.getInputStream(URI.create(uri));
-    }
-
-    @Override
-    public final Reader getReader(final URI uri) {
-        return new InputStreamReader(this.getStream(uri, java.net.http.HttpResponse.BodyHandlers.ofInputStream()));
-    }
-
-    @Override
-    public final Reader getReader(final String uri) {
-        return this.getReader(URI.create(uri));
-    }
-
-    @Override
-    public final void sendFile(URI uri, Path origin, String mime) {
-        try {
-            var request = java.net.http.HttpRequest.newBuilder()
-                    .header("Content-Type", mime)
-                    .uri(uri)
-                    .POST(java.net.http.HttpRequest.BodyPublishers.ofFile(origin))
-                    .build();
-            var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (HttpCode.isError(response.statusCode())) {
-                LOGGER.log(System.Logger.Level.ERROR, "Error sending content: {0} status: {1}", uri, response.statusCode());
-                throw new IllegalStateException("error.http.content.send");
+        try (
+                var content = this.getStream(URI.create(uri), java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+                var bis = new BufferedInputStream(content.content);
+                var bos = new BufferedOutputStream(Files.newOutputStream(destination))) {
+            var buf = new byte[BUFFER_SIZE];
+            int len;
+            long currentlyTransferred = 0;
+            while ((len = bis.read(buf)) > 0) {
+                bos.write(buf, 0, len);
+                currentlyTransferred += len;
+                listener.received(uri, len, currentlyTransferred);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("error.http.file.send", e);
+            return new HttpResponse<>(content.code, destination, content.headers());
         } catch (Exception e) {
-            throw new IllegalStateException("error.http.file.send", e);
+            return new HttpResponse<>(e);
         }
     }
 
     @Override
-    public final HttpResponse<String> sendFileResponse(URI to, Path file, String mime) {
+    public final HttpResponse<String> postFile(final String uri, final Path file, final String mime) {
         try {
             var request = java.net.http.HttpRequest.newBuilder()
                     .header("Content-Type", mime)
-                    .uri(to)
+                    .uri(URI.create(uri))
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofFile(file))
                     .build();
             var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
@@ -175,12 +109,12 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
-    public final HttpResponse<String> sendBinaryResponse(URI to, byte[] content, String mime) {
+    public final HttpResponse<String> postInputStream(final String to, final Supplier<InputStream> content, final String mime) {
         try {
             var request = java.net.http.HttpRequest.newBuilder()
                     .header("Content-Type", mime)
-                    .uri(to)
-                    .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(content))
+                    .uri(URI.create(to))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofInputStream(content))
                     .build();
             var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
@@ -192,36 +126,6 @@ public class JavaHttpClient implements HttpClient {
         }
     }
 
-    @Override
-    public final void receiveFile(URI uri, Path destination) {
-        try {
-            Files.createDirectories(destination.getParent());
-        } catch (IOException e) {
-            throw new IllegalStateException("error.file.create", e);
-        }
-        try (
-                var bis = new BufferedInputStream(this.getStream(uri, java.net.http.HttpResponse.BodyHandlers.ofInputStream()));
-                var bos = new BufferedOutputStream(Files.newOutputStream(destination))) {
-            var buf = new byte[BUFFER_SIZE];
-            int len;
-            long currentlyTransferred = 0;
-            while ((len = bis.read(buf)) > 0) {
-                bos.write(buf, 0, len);
-                currentlyTransferred += len;
-                for(HttpTransferListener l : this.listeners) {
-                    l.received(uri, len, currentlyTransferred);
-                }
-            }
-        } catch (IOException e) {
-            throw new IllegalStateException("error.http.file.retrieve", e);
-        }
-    }
-
-    @Override
-    public final void addTransferListener(HttpTransferListener l) {
-        this.listeners.add(l);
-    }
-
     /**
      * Call to an HTTP get method, return the stream generated by the response.
      *
@@ -229,7 +133,7 @@ public class JavaHttpClient implements HttpClient {
      * @return The stream for the request url.
      * @throws IllegalStateException If an exception occurs.
      */
-    private <T> T getStream(final URI url, java.net.http.HttpResponse.BodyHandler<T> bodyHandler){
+    private <T extends AutoCloseable> HttpContent<T> getStream(final URI url, java.net.http.HttpResponse.BodyHandler<T> bodyHandler){
         java.net.http.HttpRequest request;
         if(this.timeout == -1) {
             request = java.net.http.HttpRequest.newBuilder(url).build();
@@ -239,15 +143,12 @@ public class JavaHttpClient implements HttpClient {
         try {
             var response = this.client.send(request, bodyHandler);
             if (HttpCode.isError(response.statusCode())) {
-                LOGGER.log(System.Logger.Level.ERROR, "Error retrieving content: {0} status: {1}", url, response.statusCode());
                 throw new IllegalStateException(ERROR_HTTP_CONTENT_RETRIEVE);
             }
-            return response.body();
+            return new HttpContent<>(response.body(), response.statusCode(), Headers.fromMap(response.headers().map()));
         } catch (IOException e) {
-            LOGGER.log(System.Logger.Level.ERROR, "Error retrieving content: {0}", url, e);
             throw new IllegalStateException(ERROR_HTTP_CONTENT_RETRIEVE);
         } catch (InterruptedException e) {
-            LOGGER.log(System.Logger.Level.ERROR, "Error retrieving content: {0}", url, e);
             Thread.currentThread().interrupt();
             throw new IllegalStateException(ERROR_HTTP_CONTENT_RETRIEVE);
         }
@@ -265,6 +166,14 @@ public class JavaHttpClient implements HttpClient {
             return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
         } catch (Throwable e) {
             return new HttpResponse<>(e);
+        }
+    }
+
+    private record HttpContent<T extends AutoCloseable>(T content, int code, Headers headers) implements AutoCloseable {
+
+        @Override
+        public void close() throws Exception {
+            this.content.close();
         }
     }
 }
