@@ -66,6 +66,11 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
+    public final HttpResponse<Path> getFile(final String uri, final Path destination) {
+        return this.getFile(uri, destination, (u, l, t) -> {});
+    }
+
+    @Override
     public final HttpResponse<Path> getFile(final String uri, final Path destination, final HttpTransferListener listener) {
         try {
             Files.createDirectories(destination.getParent());
