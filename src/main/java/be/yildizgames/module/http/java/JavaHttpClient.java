@@ -11,6 +11,7 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.http.HttpRequest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -38,19 +39,19 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
-    public final HttpResponse<String> getText(final String uri) {
-        return this.getStreamResponse(URI.create(uri), java.net.http.HttpResponse.BodyHandlers.ofString());
+    public final HttpResponse<String> getText(final String uri, final Headers headers) {
+        return this.getStreamResponse(URI.create(uri), headers, java.net.http.HttpResponse.BodyHandlers.ofString());
     }
 
     @Override
-    public final HttpResponse<String> postText(final String uri, final String content, final String mime) {
+    public final HttpResponse<String> postText(final String uri, Headers headers, final String content, final String mime) {
         try {
-            var request = java.net.http.HttpRequest.newBuilder()
+            var requestBuilder = HttpRequest.newBuilder()
                     .header("Content-Type", mime)
                     .uri(URI.create(uri))
-                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(content))
-                    .build();
-            var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                    .POST(HttpRequest.BodyPublishers.ofString(content));
+            addHeaders(requestBuilder, headers);
+            var response = this.client.send(requestBuilder.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
             return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -61,24 +62,24 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
-    public final HttpResponse<InputStream> getInputStream(final String uri) {
-        return this.getStreamResponse(URI.create(uri), java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+    public final HttpResponse<InputStream> getInputStream(final String uri, Headers headers) {
+        return this.getStreamResponse(URI.create(uri), headers, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
     }
 
     @Override
-    public final HttpResponse<Path> getFile(final String uri, final Path destination) {
-        return this.getFile(uri, destination, (u, l, t) -> {});
+    public final HttpResponse<Path> getFile(final String uri, Headers headers, final Path destination) {
+        return this.getFile(uri, headers, destination, (u, l, t) -> {});
     }
 
     @Override
-    public final HttpResponse<Path> getFile(final String uri, final Path destination, final HttpTransferListener listener) {
+    public final HttpResponse<Path> getFile(final String uri, Headers headers, final Path destination, final HttpTransferListener listener) {
         try {
             Files.createDirectories(destination.getParent());
         } catch (IOException e) {
             return new HttpResponse<>(e);
         }
         try (
-                var content = this.getStream(URI.create(uri), java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+                var content = this.getStream(URI.create(uri), headers, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
                 var bis = new BufferedInputStream(content.content);
                 var bos = new BufferedOutputStream(Files.newOutputStream(destination))) {
             var buf = new byte[BUFFER_SIZE];
@@ -96,14 +97,14 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
-    public final HttpResponse<String> postFile(final String uri, final Path file, final String mime) {
+    public final HttpResponse<String> postFile(final String uri, Headers headers, final Path file, final String mime) {
         try {
-            var request = java.net.http.HttpRequest.newBuilder()
+            var requestBuilder = java.net.http.HttpRequest.newBuilder()
                     .header("Content-Type", mime)
                     .uri(URI.create(uri))
-                    .POST(java.net.http.HttpRequest.BodyPublishers.ofFile(file))
-                    .build();
-            var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofFile(file));
+            addHeaders(requestBuilder, headers);
+            var response = this.client.send(requestBuilder.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
             return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -114,14 +115,14 @@ public class JavaHttpClient implements HttpClient {
     }
 
     @Override
-    public final HttpResponse<String> postInputStream(final String to, final Supplier<InputStream> content, final String mime) {
+    public final HttpResponse<String> postInputStream(final String to, Headers headers, final Supplier<InputStream> content, final String mime) {
         try {
-            var request = java.net.http.HttpRequest.newBuilder()
+            var requestBuilder = java.net.http.HttpRequest.newBuilder()
                     .header("Content-Type", mime)
                     .uri(URI.create(to))
-                    .POST(java.net.http.HttpRequest.BodyPublishers.ofInputStream(content))
-                    .build();
-            var response = this.client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofInputStream(content));
+            addHeaders(requestBuilder, headers);
+            var response = this.client.send(requestBuilder.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
             return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -138,15 +139,14 @@ public class JavaHttpClient implements HttpClient {
      * @return The stream for the request url.
      * @throws IllegalStateException If an exception occurs.
      */
-    private <T extends AutoCloseable> HttpContent<T> getStream(final URI url, java.net.http.HttpResponse.BodyHandler<T> bodyHandler){
-        java.net.http.HttpRequest request;
-        if(this.timeout == -1) {
-            request = java.net.http.HttpRequest.newBuilder(url).build();
-        } else {
-            request = java.net.http.HttpRequest.newBuilder(url).timeout(Duration.ofSeconds(timeout)).build();
+    private <T extends AutoCloseable> HttpContent<T> getStream(final URI url, Headers headers, java.net.http.HttpResponse.BodyHandler<T> bodyHandler) {
+        var requestBuilder = HttpRequest.newBuilder(url);
+        addHeaders(requestBuilder, headers);
+        if(this.timeout != -1) {
+            requestBuilder.timeout(Duration.ofSeconds(timeout));
         }
         try {
-            var response = this.client.send(request, bodyHandler);
+            var response = this.client.send(requestBuilder.build(), bodyHandler);
             if (HttpCode.isError(response.statusCode())) {
                 throw new IllegalStateException(ERROR_HTTP_CONTENT_RETRIEVE);
             }
@@ -159,18 +159,26 @@ public class JavaHttpClient implements HttpClient {
         }
     }
 
-    private <T> be.yildizgames.module.http.HttpResponse<T> getStreamResponse(final URI url, java.net.http.HttpResponse.BodyHandler<T> bodyHandler){
-        java.net.http.HttpRequest request;
-        if(this.timeout == -1) {
-            request = java.net.http.HttpRequest.newBuilder(url).build();
-        } else {
-            request = java.net.http.HttpRequest.newBuilder(url).timeout(Duration.ofSeconds(timeout)).build();
+    private <T> be.yildizgames.module.http.HttpResponse<T> getStreamResponse(
+            final URI url,
+            final Headers headers,
+            java.net.http.HttpResponse.BodyHandler<T> bodyHandler) {
+        var requestBuilder = HttpRequest.newBuilder(url);
+        if(this.timeout != -1) {
+            requestBuilder.timeout(Duration.ofSeconds(timeout));
         }
+        addHeaders(requestBuilder, headers);
         try {
-            var response = this.client.send(request, bodyHandler);
+            var response = this.client.send(requestBuilder.build(), bodyHandler);
             return new HttpResponse<>(response.statusCode(), response.body(), Headers.fromMap(response.headers().map()));
         } catch (Throwable e) {
             return new HttpResponse<>(e);
+        }
+    }
+
+    private void addHeaders(HttpRequest.Builder builder, Headers headers) {
+        for(var header : headers) {
+            builder.header(header.key(), String.join(",", header.value()));
         }
     }
 
