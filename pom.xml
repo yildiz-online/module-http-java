@@ -55,7 +55,7 @@
     <dependency>
       <groupId>be.yildiz-games</groupId>
       <artifactId>module-http</artifactId>
-      <version>3.0.0</version>
+      <version>3.0.1-SNAPSHOT</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
